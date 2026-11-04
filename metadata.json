@@ -1,0 +1,6 @@
+{
+  "name": "Industrial Executive Performance Dashboard",
+  "description": "Comprehensive industrial plant executive dashboard and task registry for tracking operational gaps, department scorecards, OEE, scrap rates, and preventive maintenance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
