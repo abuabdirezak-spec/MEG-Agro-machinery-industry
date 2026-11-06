@@ -50,8 +50,8 @@ export interface DepartmentInfo {
   category?: 'Manufacturing & Operations' | 'Maintenance & Tech' | 'Commercial & Supply' | 'Administration & Governance' | 'Governance & Finance';
 }
 
-export type TaskStatus = 'Completed' | 'In Progress' | 'Delayed' | 'Overdue';
-export type TaskPriority = 'Urgent' | 'Critical' | 'High' | 'Medium' | 'Low';
+export type TaskStatus = 'Planned' | 'In Progress' | 'Completed' | 'Delayed' | 'Overdue';
+export type TaskPriority = 'Low' | 'Medium' | 'High' | 'Critical' | 'Urgent';
 
 export interface WeeklyTask {
   id: string; // e.g. TSK-4401
@@ -60,15 +60,19 @@ export interface WeeklyTask {
   titleEn: string;
   titleAm: string;
   assignedTo: string;
-  priority: TaskPriority;
+  priority: TaskPriority; // Importance: Low, Medium, High, Critical
   status: TaskStatus;
   progressPercent: number;
   plannedQty: number;
   actualQty: number;
   unit: string;
-  dueDate: string;
-  completionDate?: string;
+  startDate?: string; // Plan Start Date (YYYY-MM-DD)
+  endDate?: string; // Plan End Date (YYYY-MM-DD)
+  dueDate: string; // Kept in sync with endDate for backward compatibility
+  actualStartDate?: string; // Stamped when execution begins ('Start' action)
+  completionDate?: string; // Stamped when task is finalized
   varianceNotes?: string;
+  blockedBy?: string; // Task ID of prerequisite task that must be completed first (e.g. 'TSK-4401')
 }
 
 export interface DepartmentEvaluation {

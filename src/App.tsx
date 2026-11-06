@@ -19,7 +19,10 @@ import {
   ActionableRecommendation, 
   MaintenanceStatus,
   DepartmentId,
-  TaskStatus
+  TaskStatus,
+  MachineOEE,
+  DepartmentBudget,
+  CapacityAndScrap
 } from './types/dashboard.ts';
 import { Header, ActiveTab, LanguageMode } from './components/Header.tsx';
 import { ExecutiveSummaryView } from './components/ExecutiveSummaryView.tsx';
@@ -33,6 +36,15 @@ import { NewMaintenanceModal } from './components/NewMaintenanceModal.tsx';
 import { EditEvaluationModal } from './components/EditEvaluationModal.tsx';
 import { ExecutiveReportingModal } from './components/ExecutiveReportingModal.tsx';
 import { GeminiPlantCopilot } from './components/GeminiPlantCopilot.tsx';
+import { ConfirmDeleteModal } from './components/ConfirmDeleteModal.tsx';
+import { EditTaskModal } from './components/EditTaskModal.tsx';
+import { EditMaintenanceModal } from './components/EditMaintenanceModal.tsx';
+import { MachineModal } from './components/MachineModal.tsx';
+import { EditDepartmentDataModal } from './components/EditDepartmentDataModal.tsx';
+import { EditDirectiveModal } from './components/EditDirectiveModal.tsx';
+import { GoogleSheetsModal } from './components/GoogleSheetsModal.tsx';
+import { MonitoringEvaluationWorkflowModal } from './components/MonitoringEvaluationWorkflowModal.tsx';
+import { LogExecutionModal } from './components/LogExecutionModal.tsx';
 
 export default function App() {
   // Main Navigation State
@@ -57,6 +69,32 @@ export default function App() {
   const [editingEvaluation, setEditingEvaluation] = useState<DepartmentEvaluation | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+  const [isGoogleSheetsOpen, setIsGoogleSheetsOpen] = useState(false);
+  const [isMEWorkflowOpen, setIsMEWorkflowOpen] = useState(false);
+
+  // Edit & Delete Specific Modal States
+  const [editingTask, setEditingTask] = useState<WeeklyTask | null>(null);
+  const [loggingExecutionTask, setLoggingExecutionTask] = useState<WeeklyTask | null>(null);
+  const [editingMaintenance, setEditingMaintenance] = useState<PreventiveMaintenanceItem | null>(null);
+  const [editingMachine, setEditingMachine] = useState<MachineOEE | null>(null);
+  const [isAddMachineOpen, setIsAddMachineOpen] = useState(false);
+  const [editingDeptData, setEditingDeptData] = useState<{
+    deptId: DepartmentId;
+    budget: DepartmentBudget;
+    capacity: CapacityAndScrap;
+  } | null>(null);
+  const [editingDirective, setEditingDirective] = useState<ActionableRecommendation | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    type: 'task' | 'maintenance' | 'machine' | 'directive';
+    id: string;
+    title: string;
+  }>({
+    isOpen: false,
+    type: 'task',
+    id: '',
+    title: '',
+  });
 
   // Automatic mount effect: Ensure browser storage is cleared of any residual demo records
   useEffect(() => {
@@ -114,6 +152,37 @@ export default function App() {
 
   const handleUpdateTask = (updatedTask: WeeklyTask) => {
     setTasks(tasks.map((t) => (t.id === updatedTask.id ? updatedTask : t)));
+  };
+
+  // Bulk Reschedule Critical Overdue Tasks to the next working week
+  const handleBulkRescheduleOverdue = (taskIds: string[]) => {
+    const today = new Date();
+    // Next working week Monday (7 days ahead)
+    const nextMonday = new Date(today.getTime() + (7 - today.getDay() + 1) * 24 * 60 * 60 * 1000);
+    const nextSaturday = new Date(nextMonday.getTime() + 5 * 24 * 60 * 60 * 1000);
+    const nextStartStr = nextMonday.toISOString().split('T')[0];
+    const nextEndStr = nextSaturday.toISOString().split('T')[0];
+
+    setTasks((prevTasks) =>
+      prevTasks.map((t) => {
+        if (!taskIds.includes(t.id)) return t;
+
+        // Compute next week code e.g. W44 -> W45
+        const curNum = parseInt((t.week || 'W44').replace(/\D/g, ''), 10) || 44;
+        const nextWeekCode = `W${curNum + 1}`;
+        const prevEnd = t.endDate || t.dueDate;
+
+        return {
+          ...t,
+          week: nextWeekCode,
+          startDate: nextStartStr,
+          endDate: nextEndStr,
+          dueDate: nextEndStr,
+          status: 'In Progress', // Re-opened for active execution in the new week
+          varianceNotes: `Rescheduled from ${prevEnd} (${t.week || 'W44'}) to ${nextWeekCode} (${nextStartStr} to ${nextEndStr}). ${t.varianceNotes || ''}`.trim(),
+        };
+      })
+    );
   };
 
   // Handlers for Preventive Maintenance
@@ -174,6 +243,96 @@ export default function App() {
     setRecommendations([newRec, ...recommendations]);
   };
 
+  // Comprehensive Edit & Delete Handlers
+  const handleSaveEditedTask = (updatedTask: WeeklyTask) => {
+    setTasks(tasks.map((t) => (t.id === updatedTask.id ? updatedTask : t)));
+    setEditingTask(null);
+  };
+
+  const handlePromptDeleteTask = (task: WeeklyTask) => {
+    setDeleteConfirm({
+      isOpen: true,
+      type: 'task',
+      id: task.id,
+      title: task.titleEn,
+    });
+  };
+
+  const handleSaveEditedMaintenance = (updatedItem: PreventiveMaintenanceItem) => {
+    setMaintenanceItems(maintenanceItems.map((m) => (m.id === updatedItem.id ? updatedItem : m)));
+    setEditingMaintenance(null);
+  };
+
+  const handlePromptDeleteMaintenance = (item: PreventiveMaintenanceItem) => {
+    setDeleteConfirm({
+      isOpen: true,
+      type: 'maintenance',
+      id: item.id,
+      title: `${item.equipmentName} (${item.equipmentId})`,
+    });
+  };
+
+  const handleSaveMachine = (savedMachine: MachineOEE) => {
+    const exists = machines.some((m) => m.machineId === savedMachine.machineId);
+    if (exists) {
+      setMachines(machines.map((m) => (m.machineId === savedMachine.machineId ? savedMachine : m)));
+    } else {
+      setMachines([savedMachine, ...machines]);
+    }
+    setEditingMachine(null);
+    setIsAddMachineOpen(false);
+  };
+
+  const handlePromptDeleteMachine = (machine: MachineOEE) => {
+    setDeleteConfirm({
+      isOpen: true,
+      type: 'machine',
+      id: machine.machineId,
+      title: `${machine.nameEn} (${machine.machineId})`,
+    });
+  };
+
+  const handleSaveDepartmentData = (
+    updatedBudget: DepartmentBudget,
+    updatedCapacity: CapacityAndScrap
+  ) => {
+    setBudgets(budgets.map((b) => (b.departmentId === updatedBudget.departmentId ? updatedBudget : b)));
+    setCapacityScrap(capacityScrap.map((c) => (c.departmentId === updatedCapacity.departmentId ? updatedCapacity : c)));
+    setEditingDeptData(null);
+  };
+
+  const handleSaveEditedDirective = (updatedRec: ActionableRecommendation) => {
+    setRecommendations(recommendations.map((r) => (r.id === updatedRec.id ? updatedRec : r)));
+    setEditingDirective(null);
+  };
+
+  const handlePromptDeleteDirective = (rec: ActionableRecommendation) => {
+    setDeleteConfirm({
+      isOpen: true,
+      type: 'directive',
+      id: rec.id,
+      title: rec.titleEn,
+    });
+  };
+
+  const handleExecuteDelete = () => {
+    const { type, id } = deleteConfirm;
+    if (type === 'task') {
+      setTasks(tasks.filter((t) => t.id !== id));
+      if (editingTask?.id === id) setEditingTask(null);
+    } else if (type === 'maintenance') {
+      setMaintenanceItems(maintenanceItems.filter((m) => m.id !== id));
+      if (editingMaintenance?.id === id) setEditingMaintenance(null);
+    } else if (type === 'machine') {
+      setMachines(machines.filter((m) => m.machineId !== id));
+      if (editingMachine?.machineId === id) setEditingMachine(null);
+    } else if (type === 'directive') {
+      setRecommendations(recommendations.filter((r) => r.id !== id));
+      if (editingDirective?.id === id) setEditingDirective(null);
+    }
+    setDeleteConfirm({ isOpen: false, type: 'task', id: '', title: '' });
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
       {/* 3-Zone Clean Header */}
@@ -183,11 +342,14 @@ export default function App() {
         langMode={langMode}
         setLangMode={setLangMode}
         onOpenExport={() => setIsExportModalOpen(true)}
+        onOpenGoogleSheets={() => setIsGoogleSheetsOpen(true)}
+        onOpenMEWorkflow={() => setIsMEWorkflowOpen(true)}
         tasks={tasks}
         onNavigateToTask={handleNavigateToTask}
         onClearAllData={handleClearAllData}
         onOpenCopilot={() => setIsCopilotOpen(true)}
         isCleanSlate={isCleanSlate}
+        onBulkRescheduleOverdue={handleBulkRescheduleOverdue}
       />
 
       {/* Main Viewport Container */}
@@ -242,6 +404,7 @@ export default function App() {
             selectedDeptId={selectedDepartmentFilter}
             onSelectDeptId={setSelectedDepartmentFilter}
             onEditEvaluation={(evalData) => setEditingEvaluation(evalData)}
+            onEditDepartmentData={(b, c) => setEditingDeptData({ deptId: b.departmentId, budget: b, capacity: c })}
             langMode={langMode}
           />
         )}
@@ -252,6 +415,9 @@ export default function App() {
             onAddTask={() => setIsTaskModalOpen(true)}
             onRegisterQuickTask={handleAddTask}
             onUpdateTask={handleUpdateTask}
+            onEditTask={(task) => setEditingTask(task)}
+            onDeleteTask={(task) => handlePromptDeleteTask(task)}
+            onLogExecution={(task) => setLoggingExecutionTask(task)}
             langMode={langMode}
             initialStatusFilter={taskFilterStatus}
             highlightedTaskId={highlightedTaskId}
@@ -259,6 +425,7 @@ export default function App() {
               setHighlightedTaskId(null);
               setTaskFilterStatus('All');
             }}
+            onBulkRescheduleOverdue={handleBulkRescheduleOverdue}
           />
         )}
 
@@ -269,6 +436,11 @@ export default function App() {
             capacityScrap={capacityScrap}
             onAddMaintenance={() => setIsMaintenanceModalOpen(true)}
             onUpdateMaintenanceStatus={handleUpdateMaintenanceStatus}
+            onEditMaintenance={(m) => setEditingMaintenance(m)}
+            onDeleteMaintenance={(m) => handlePromptDeleteMaintenance(m)}
+            onAddMachine={() => setIsAddMachineOpen(true)}
+            onEditMachine={(m) => setEditingMachine(m)}
+            onDeleteMachine={(m) => handlePromptDeleteMachine(m)}
             langMode={langMode}
           />
         )}
@@ -286,6 +458,8 @@ export default function App() {
             recommendations={recommendations}
             onUpdateStatus={handleUpdateRecommendationStatus}
             onAddRecommendation={handleAddRecommendation}
+            onEditDirective={(rec) => setEditingDirective(rec)}
+            onDeleteDirective={(rec) => handlePromptDeleteDirective(rec)}
             langMode={langMode}
           />
         )}
@@ -297,6 +471,7 @@ export default function App() {
         onClose={() => setIsTaskModalOpen(false)}
         onSave={handleAddTask}
         langMode={langMode}
+        tasks={tasks}
       />
 
       <NewMaintenanceModal
@@ -332,6 +507,115 @@ export default function App() {
         langMode={langMode}
         tasksCount={tasks.length}
         overdueTasksCount={tasks.filter((t) => t.status === 'Overdue').length}
+      />
+
+      {/* Dynamic Edit, Save & Delete Modals */}
+      <EditTaskModal
+        isOpen={!!editingTask}
+        task={editingTask}
+        onClose={() => setEditingTask(null)}
+        onSave={handleSaveEditedTask}
+        onDelete={(taskId) => {
+          if (editingTask) handlePromptDeleteTask(editingTask);
+        }}
+        langMode={langMode}
+        tasks={tasks}
+      />
+
+      {/* Pure Execution Logging Modal (Separated from Planning) */}
+      <LogExecutionModal
+        isOpen={!!loggingExecutionTask}
+        task={loggingExecutionTask}
+        onClose={() => setLoggingExecutionTask(null)}
+        onSave={handleSaveEditedTask}
+        langMode={langMode}
+      />
+
+      <EditMaintenanceModal
+        isOpen={!!editingMaintenance}
+        item={editingMaintenance}
+        onClose={() => setEditingMaintenance(null)}
+        onSave={handleSaveEditedMaintenance}
+        onDelete={(id) => {
+          if (editingMaintenance) handlePromptDeleteMaintenance(editingMaintenance);
+        }}
+        langMode={langMode}
+      />
+
+      {/* Machine Modal for Editing */}
+      <MachineModal
+        isOpen={!!editingMachine}
+        machine={editingMachine}
+        onClose={() => setEditingMachine(null)}
+        onSave={handleSaveMachine}
+        onDelete={(machineId) => {
+          if (editingMachine) handlePromptDeleteMachine(editingMachine);
+        }}
+        langMode={langMode}
+      />
+
+      {/* Machine Modal for Registering New Equipment */}
+      <MachineModal
+        isOpen={isAddMachineOpen}
+        machine={null}
+        onClose={() => setIsAddMachineOpen(false)}
+        onSave={handleSaveMachine}
+        langMode={langMode}
+      />
+
+      <EditDepartmentDataModal
+        isOpen={!!editingDeptData}
+        departmentId={editingDeptData?.deptId || null}
+        budget={editingDeptData?.budget || null}
+        capacityScrap={editingDeptData?.capacity || null}
+        onClose={() => setEditingDeptData(null)}
+        onSave={handleSaveDepartmentData}
+        langMode={langMode}
+      />
+
+      <EditDirectiveModal
+        isOpen={!!editingDirective}
+        directive={editingDirective}
+        onClose={() => setEditingDirective(null)}
+        onSave={handleSaveEditedDirective}
+        onDelete={(dirId) => {
+          if (editingDirective) handlePromptDeleteDirective(editingDirective);
+        }}
+        langMode={langMode}
+      />
+
+      <ConfirmDeleteModal
+        isOpen={deleteConfirm.isOpen}
+        title={deleteConfirm.title}
+        itemIdentifier={deleteConfirm.id}
+        onConfirm={handleExecuteDelete}
+        onCancel={() => setDeleteConfirm({ isOpen: false, type: 'task', id: '', title: '' })}
+        langMode={langMode}
+      />
+
+      <GoogleSheetsModal
+        isOpen={isGoogleSheetsOpen}
+        onClose={() => setIsGoogleSheetsOpen(false)}
+        data={{
+          tasks,
+          maintenance: maintenanceItems,
+          evaluations,
+          capacityScrap,
+          budgets,
+          machines,
+          recommendations,
+        }}
+        langMode={langMode}
+      />
+
+      <MonitoringEvaluationWorkflowModal
+        isOpen={isMEWorkflowOpen}
+        onClose={() => setIsMEWorkflowOpen(false)}
+        tasks={tasks}
+        onOpenNewTask={() => setIsTaskModalOpen(true)}
+        onOpenReportModal={() => setIsExportModalOpen(true)}
+        onOpenGoogleSheets={() => setIsGoogleSheetsOpen(true)}
+        langMode={langMode}
       />
 
       {/* Industrial Plant Quiet Footer */}

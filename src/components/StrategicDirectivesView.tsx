@@ -10,7 +10,9 @@ import {
   ArrowRight,
   Plus,
   Sliders,
-  DollarSign
+  DollarSign,
+  Edit3,
+  Trash2
 } from 'lucide-react';
 import { ActionableRecommendation, DepartmentId, LanguageMode } from '../types/dashboard.ts';
 import { DEPARTMENTS } from '../data/mockData.ts';
@@ -20,6 +22,8 @@ interface StrategicDirectivesViewProps {
   recommendations: ActionableRecommendation[];
   onUpdateStatus: (id: string, status: ActionableRecommendation['status']) => void;
   onAddRecommendation: (rec: ActionableRecommendation) => void;
+  onEditDirective?: (rec: ActionableRecommendation) => void;
+  onDeleteDirective?: (rec: ActionableRecommendation) => void;
   langMode: LanguageMode;
 }
 
@@ -27,6 +31,8 @@ export const StrategicDirectivesView: React.FC<StrategicDirectivesViewProps> = (
   recommendations,
   onUpdateStatus,
   onAddRecommendation,
+  onEditDirective,
+  onDeleteDirective,
   langMode,
 }) => {
   const [selectedFilter, setSelectedFilter] = useState<'All' | 'Immediate' | 'Short-Term' | 'Strategic'>('All');
@@ -172,17 +178,39 @@ export const StrategicDirectivesView: React.FC<StrategicDirectivesViewProps> = (
                     </span>
                   </div>
 
-                  <span
-                    className={`text-[10px] font-mono uppercase font-bold px-1.5 py-0.5 rounded ${
-                      rec.priority === 'Immediate'
-                        ? 'text-rose-400 bg-rose-950/40 border border-rose-800/40'
-                        : rec.priority === 'Short-Term'
-                        ? 'text-amber-400 bg-amber-950/40 border border-amber-800/40'
-                        : 'text-blue-400 bg-blue-950/40 border border-blue-800/40'
-                    }`}
-                  >
-                    {rec.priority}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`text-[10px] font-mono uppercase font-bold px-1.5 py-0.5 rounded ${
+                        rec.priority === 'Immediate'
+                          ? 'text-rose-400 bg-rose-950/40 border border-rose-800/40'
+                          : rec.priority === 'Short-Term'
+                          ? 'text-amber-400 bg-amber-950/40 border border-amber-800/40'
+                          : 'text-blue-400 bg-blue-950/40 border border-blue-800/40'
+                      }`}
+                    >
+                      {rec.priority}
+                    </span>
+                    {onEditDirective && (
+                      <button
+                        type="button"
+                        onClick={() => onEditDirective(rec)}
+                        className="p-1 text-blue-400 hover:text-white hover:bg-blue-600/30 rounded transition-colors cursor-pointer"
+                        title={langMode === 'am' ? 'የተሳሳተ መመሪያን አርም' : 'Edit directive'}
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {onDeleteDirective && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteDirective(rec)}
+                        className="p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 rounded transition-colors cursor-pointer"
+                        title={langMode === 'am' ? 'መመሪያውን ሰርዝ' : 'Delete directive'}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Directive Title */}

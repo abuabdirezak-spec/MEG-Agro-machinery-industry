@@ -11,7 +11,9 @@ import {
   ShieldAlert,
   Sliders,
   Layers,
-  Cpu
+  Cpu,
+  Edit3,
+  Trash2
 } from 'lucide-react';
 import { 
   MachineOEE, 
@@ -30,6 +32,11 @@ interface MaintenanceOeeViewProps {
   capacityScrap: CapacityAndScrap[];
   onAddMaintenance: () => void;
   onUpdateMaintenanceStatus: (id: string, newStatus: MaintenanceStatus) => void;
+  onEditMaintenance?: (item: PreventiveMaintenanceItem) => void;
+  onDeleteMaintenance?: (item: PreventiveMaintenanceItem) => void;
+  onAddMachine?: () => void;
+  onEditMachine?: (machine: MachineOEE) => void;
+  onDeleteMachine?: (machine: MachineOEE) => void;
   langMode: LanguageMode;
 }
 
@@ -39,6 +46,11 @@ export const MaintenanceOeeView: React.FC<MaintenanceOeeViewProps> = ({
   capacityScrap,
   onAddMaintenance,
   onUpdateMaintenanceStatus,
+  onEditMaintenance,
+  onDeleteMaintenance,
+  onAddMachine,
+  onEditMachine,
+  onDeleteMachine,
   langMode,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'maintenance' | 'machines' | 'capacity'>('maintenance');
@@ -304,19 +316,42 @@ export const MaintenanceOeeView: React.FC<MaintenanceOeeViewProps> = ({
                       <td className="py-3 px-3">
                         {getMaintenanceStatusBadge(item.status)}
                       </td>
-                      <td className="py-3 px-3 text-center">
-                        <button
-                          onClick={() => {
-                            const nextState = 
-                              item.status === 'Overdue' || item.status === 'In Progress' 
-                                ? 'On Schedule' 
-                                : 'In Progress';
-                            onUpdateMaintenanceStatus(item.id, nextState);
-                          }}
-                          className="px-2 py-1 text-[11px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700 transition-colors whitespace-nowrap"
-                        >
-                          {item.status === 'On Schedule' ? 'Log Service' : 'Mark Serviced'}
-                        </button>
+                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nextState = 
+                                item.status === 'Overdue' || item.status === 'In Progress' 
+                                  ? 'On Schedule' 
+                                  : 'In Progress';
+                              onUpdateMaintenanceStatus(item.id, nextState);
+                            }}
+                            className="px-2 py-1 text-[11px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700 transition-colors whitespace-nowrap cursor-pointer"
+                          >
+                            {item.status === 'On Schedule' ? 'Log Service' : 'Mark Serviced'}
+                          </button>
+                          {onEditMaintenance && (
+                            <button
+                              type="button"
+                              onClick={() => onEditMaintenance(item)}
+                              className="p-1 rounded text-blue-400 hover:text-white hover:bg-blue-600/30 transition-colors cursor-pointer"
+                              title={langMode === 'am' ? 'የተሳሳተ መረጃን አርም' : 'Edit incorrect schedule'}
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {onDeleteMaintenance && (
+                            <button
+                              type="button"
+                              onClick={() => onDeleteMaintenance(item)}
+                              className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-colors cursor-pointer"
+                              title={langMode === 'am' ? 'መርሐግብሩን ሰርዝ' : 'Delete schedule'}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )))}
@@ -329,7 +364,31 @@ export const MaintenanceOeeView: React.FC<MaintenanceOeeViewProps> = ({
 
       {/* 2. Machine OEE Log */}
       {activeSubTab === 'machines' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden space-y-0">
+          {/* Machines Registry Header Bar */}
+          <div className="p-4 border-b border-slate-800 bg-slate-950/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Cpu className="w-4 h-4 text-blue-400" />
+                <span>{langMode === 'am' ? 'የማሽነሪዎች OEE መዝገብ' : 'Equipment & Machinery OEE Registry'}</span>
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                {langMode === 'am' ? 'የማሽኖች መገኘት (Availability)፣ አፈጻጸም (Performance) እና ጥራት (Quality) ምጣኔ' : 'Live OEE components (A × P × Q), assigned operators, and operational statuses'}
+              </p>
+            </div>
+
+            {onAddMachine && (
+              <button
+                type="button"
+                onClick={onAddMachine}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-semibold transition-colors cursor-pointer shadow-xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{langMode === 'am' ? 'አዲስ ማሽን መዝግብ' : '+ Add Machine'}</span>
+              </button>
+            )}
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
@@ -343,12 +402,13 @@ export const MaintenanceOeeView: React.FC<MaintenanceOeeViewProps> = ({
                   <th className="py-3 px-3 text-right">Quality (Q)</th>
                   <th className="py-3 px-3 text-right">Total OEE %</th>
                   <th className="py-3 px-3 text-center">Status</th>
+                  <th className="py-3 px-3 text-center w-24">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
                 {machines.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-slate-400 text-xs">
+                    <td colSpan={10} className="py-12 text-center text-slate-400 text-xs">
                       <div className="flex flex-col items-center justify-center gap-2 max-w-sm mx-auto">
                         <Cpu className="w-8 h-8 text-slate-600" />
                         <p className="font-semibold text-slate-300">
@@ -357,6 +417,15 @@ export const MaintenanceOeeView: React.FC<MaintenanceOeeViewProps> = ({
                         <p className="text-[11px] text-slate-500">
                           {langMode === 'am' ? 'የፋብሪካ ማሽነሪዎች ሲመዘገቡ እዚህ ይታያሉ።' : 'Machine tags, availability, performance, and OEE percentages will appear here.'}
                         </p>
+                        {onAddMachine && (
+                          <button
+                            type="button"
+                            onClick={onAddMachine}
+                            className="mt-2 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-semibold cursor-pointer shadow-xs"
+                          >
+                            + {langMode === 'am' ? 'የመጀመሪያውን ማሽን መዝግብ' : 'Register First Machine'}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -396,6 +465,30 @@ export const MaintenanceOeeView: React.FC<MaintenanceOeeViewProps> = ({
                     </td>
                     <td className="py-3 px-3 text-center">
                       {getMachineStatusBadge(machine.status)}
+                    </td>
+                    <td className="py-3 px-3 text-center whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-1.5">
+                        {onEditMachine && (
+                          <button
+                            type="button"
+                            onClick={() => onEditMachine(machine)}
+                            className="p-1 rounded text-blue-400 hover:text-white hover:bg-blue-600/30 transition-colors cursor-pointer"
+                            title={langMode === 'am' ? 'የማሽን መረጃን አርም' : 'Edit machine & OEE'}
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {onDeleteMachine && (
+                          <button
+                            type="button"
+                            onClick={() => onDeleteMachine(machine)}
+                            className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-colors cursor-pointer"
+                            title={langMode === 'am' ? 'ማሽኑን ሰርዝ' : 'Delete machine'}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )))}

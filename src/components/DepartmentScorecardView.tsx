@@ -10,7 +10,9 @@ import {
   TrendingDown,
   Layers,
   Check,
-  ChevronRight
+  ChevronRight,
+  Sliders,
+  DollarSign
 } from 'lucide-react';
 import { 
   DepartmentId, 
@@ -29,6 +31,7 @@ interface DepartmentScorecardViewProps {
   capacityScrap: CapacityAndScrap[];
   tasks: WeeklyTask[];
   onEditEvaluation: (evaluation: DepartmentEvaluation) => void;
+  onEditDepartmentData?: (budget: DepartmentBudget, capacity: CapacityAndScrap) => void;
   selectedDeptId?: DepartmentId | 'all';
   onSelectDeptId?: (id: DepartmentId | 'all') => void;
   langMode: LanguageMode;
@@ -40,6 +43,7 @@ export const DepartmentScorecardView: React.FC<DepartmentScorecardViewProps> = (
   capacityScrap,
   tasks,
   onEditEvaluation,
+  onEditDepartmentData,
   selectedDeptId: externalSelectedDeptId,
   onSelectDeptId,
   langMode,
@@ -275,13 +279,48 @@ export const DepartmentScorecardView: React.FC<DepartmentScorecardViewProps> = (
                     <div className={`px-2.5 py-1 rounded border font-mono font-bold text-sm ${getGradeColor(evalData.grade)}`}>
                       Grade {evalData.grade}
                     </div>
-                    <button
-                      onClick={() => onEditEvaluation(evalData)}
-                      className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors"
-                      title="Edit Evaluation Scores"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => onEditEvaluation(evalData)}
+                        className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors cursor-pointer"
+                        title={langMode === 'am' ? 'የምዘና ውጤቶችን አርም (Edit Scores)' : 'Edit Evaluation Scores (0-50 pts)'}
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                      {onEditDepartmentData && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const b = budgetData || {
+                              departmentId: dept.id,
+                              plannedBudgetETB: 0,
+                              actualSpendETB: 0,
+                              varianceETB: 0,
+                              variancePct: 0,
+                            };
+                            const c = capacityData || {
+                              departmentId: dept.id,
+                              plannedHours: 0,
+                              actualRunHours: 0,
+                              downtimeHours: 0,
+                              capacityUtilizationPct: 0,
+                              targetOutputUnits: 0,
+                              actualOutputUnits: 0,
+                              scrapPieces: 0,
+                              defectRatePct: 0,
+                              scrapCostETB: 0,
+                              operatorsActive: dept.operatorCount,
+                            };
+                            onEditDepartmentData(b, c);
+                          }}
+                          className="p-1.5 text-blue-400 hover:text-white hover:bg-blue-600/30 rounded transition-colors cursor-pointer"
+                          title={langMode === 'am' ? 'የበጀትና የማምረቻ መረጃን አርም (Edit Budgets & Scrap)' : 'Edit Budgets, Run Hours, Output & Scrap'}
+                        >
+                          <Sliders className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 

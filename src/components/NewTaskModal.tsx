@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { X, CheckCircle2, Calculator, PlusCircle } from 'lucide-react';
-import { WeeklyTask, DepartmentId, TaskPriority, TaskStatus, LanguageMode } from '../types/dashboard.ts';
+import { X, Target, PlusCircle, Calendar, User, Layers, Lock } from 'lucide-react';
+import { WeeklyTask, DepartmentId, TaskPriority, LanguageMode } from '../types/dashboard.ts';
 import { DEPARTMENTS } from '../data/mockData.ts';
 
 interface NewTaskModalProps {
@@ -8,6 +8,7 @@ interface NewTaskModalProps {
   onClose: () => void;
   onSave: (task: WeeklyTask) => void;
   langMode?: LanguageMode;
+  tasks?: WeeklyTask[];
 }
 
 export const NewTaskModal: React.FC<NewTaskModalProps> = ({
@@ -15,29 +16,30 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
   onClose,
   onSave,
   langMode = 'en',
+  tasks = [],
 }) => {
-  // Required format fields: task, measurement, Plan, actual, performance in %, department
+  // Pure Planning inputs
   const [taskNameEn, setTaskNameEn] = useState('');
   const [taskNameAm, setTaskNameAm] = useState('');
   const [measurement, setMeasurement] = useState('Pcs');
   const [planQty, setPlanQty] = useState<number | ''>(500);
-  const [actualQty, setActualQty] = useState<number | ''>(425);
   const [departmentId, setDepartmentId] = useState<DepartmentId>('production');
 
-  // Supporting metadata
+  // Supporting planning metadata
   const [week, setWeek] = useState('W44');
   const [assignedTo, setAssignedTo] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('High');
-  const [status, setStatus] = useState<TaskStatus>('In Progress');
-  const [dueDate, setDueDate] = useState('2026-11-06');
-  const [varianceNotes, setVarianceNotes] = useState('');
+  const [blockedBy, setBlockedBy] = useState<string>('');
+  const [startDate, setStartDate] = useState(
+    new Date().toISOString().split('T')[0]
+  );
+  const [endDate, setEndDate] = useState(
+    new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  );
 
   if (!isOpen) return null;
 
-  // Compute performance in % live
-  const planVal = Number(planQty) || 0;
-  const actualVal = Number(actualQty) || 0;
-  const performanceInPct = planVal > 0 ? Number(((actualVal / planVal) * 100).toFixed(1)) : 0;
+  const planVal = Number(planQty) || 1;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,14 +53,15 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
       titleAm: taskNameAm.trim() || taskNameEn.trim(),
       assignedTo: assignedTo.trim() || 'Floor Supervisor',
       priority,
-      status: performanceInPct >= 100 ? 'Completed' : status,
-      progressPercent: Math.min(100, Math.round(performanceInPct)),
+      status: 'Planned', // Standard baseline status: Execution starts with 'Start' action
+      progressPercent: 0,
       plannedQty: planVal,
-      actualQty: actualVal,
+      actualQty: 0, // Execution output is logged separately later!
       unit: measurement.trim() || 'Pcs',
-      dueDate,
-      completionDate: performanceInPct >= 100 ? new Date().toISOString().split('T')[0] : undefined,
-      varianceNotes: varianceNotes.trim() ? varianceNotes : undefined,
+      startDate,
+      endDate,
+      dueDate: endDate,
+      blockedBy: blockedBy.trim() || undefined,
     };
 
     onSave(newTask);
@@ -67,269 +70,249 @@ export const NewTaskModal: React.FC<NewTaskModalProps> = ({
     setTaskNameEn('');
     setTaskNameAm('');
     setPlanQty(500);
-    setActualQty(0);
+    setAssignedTo('');
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-xl w-full text-xs shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+      <div className="bg-slate-900 border border-blue-900/60 rounded-xl max-w-xl w-full text-xs shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-950/70">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-blue-950/30 shrink-0">
           <div className="flex items-center gap-2">
-            <PlusCircle className="w-4 h-4 text-blue-400" />
+            <div className="w-8 h-8 rounded-lg bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400 shrink-0">
+              <Target className="w-4 h-4" />
+            </div>
             <div>
               <h3 className="text-sm font-bold text-white tracking-tight">
-                {langMode === 'am' ? 'ሳምንታዊ የስራ ምዝገባ (Weekly Task Registration)' : 'Weekly Task Registration'}
+                {langMode === 'am' ? 'አዲስ እቅድ መዝግብ (Register Plan Target)' : 'Register Plan Target (እቅድ)'}
               </h3>
-              <p className="text-[10px] text-slate-400 font-mono">
-                Format: [Task, Measurement, Plan, Actual, Performance in %, Department]
+              <p className="text-[10px] text-slate-400">
+                {langMode === 'am' 
+                  ? 'የታቀደውን የስራ ግብ ብቻ ያስገቡ · ሳምንታዊ ክንውን (Execution) ስራው ከተከናወነ በኋላ በተናጠል ይመዘገባል' 
+                  : 'Define target deliverables and baseline quantities. Floor execution is logged separately later.'}
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+          <button onClick={onClose} className="p-1 text-slate-400 hover:text-white rounded-md hover:bg-slate-800 transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {/* Format Indicator Callout */}
-          <div className="bg-blue-950/30 border border-blue-900/40 rounded p-2.5 flex items-center justify-between text-[11px] font-mono text-slate-300">
-            <span className="text-blue-400 font-semibold uppercase">Standard Registration Format:</span>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto flex-1">
+          {/* Phase 1 Indicator Callout */}
+          <div className="bg-blue-950/40 border border-blue-900/50 rounded-lg p-3 text-[11px] text-slate-300 flex items-center justify-between">
+            <div className="flex items-center gap-2 font-mono">
+              <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+              <span className="text-blue-300 font-semibold uppercase">Phase 1: Planning Baseline</span>
+            </div>
             <span className="text-slate-400 text-[10px]">
-              Task · Measurement · Plan · Actual · Performance in % · Department
+              Actual output (ክንውን) is intentionally separated for later logging
             </span>
           </div>
 
-          {/* 1. TASK */}
-          <div>
-            <label className="text-xs font-semibold text-white block mb-1">
-              1. Task (ስራ / የስራ ዝርዝር) *
+          {/* 1. Deliverable Description */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-white block">
+              1. Task Deliverable Scope (የስራው ዝርዝር) *
             </label>
             <input
               type="text"
               required
               value={taskNameEn}
               onChange={(e) => setTaskNameEn(e.target.value)}
-              placeholder="e.g. CNC lathe machining of high-pressure flange adapters"
-              className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 text-xs"
+              placeholder="e.g. Precision CNC lathe turning of 45# carbon steel drive shafts"
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-xs"
             />
-          </div>
-
-          {/* Optional Amharic Task Name */}
-          <div>
-            <label className="text-[11px] text-slate-400 block mb-1">
-              Task Deliverable in Amharic (አማርኛ ስራ ዝርዝር - አማራጭ)
-            </label>
             <input
               type="text"
               value={taskNameAm}
               onChange={(e) => setTaskNameAm(e.target.value)}
-              placeholder="e.g. የከፍተኛ ግፊት ፍላንጅ ሌዝ ቅርጽ ስራ"
-              className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-white focus:outline-none focus:border-blue-500 text-xs"
+              placeholder="የስራው ዝርዝር በአማርኛ (አማራጭ)..."
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 text-xs"
             />
           </div>
 
-          {/* 2. MEASUREMENT, 3. PLAN, 4. ACTUAL */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* 2. MEASUREMENT */}
-            <div>
-              <label className="text-xs font-semibold text-white block mb-1">
-                2. Measurement (መለኪያ) *
-              </label>
-              <select
-                value={measurement}
-                onChange={(e) => setMeasurement(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 text-xs font-mono"
-              >
-                <option value="Pcs">Pcs (ቁራጭ)</option>
-                <option value="Units">Units (አሃድ)</option>
-                <option value="Batches">Batches (ባች/ቡድን)</option>
-                <option value="Frames">Frames (ማዕቀፍ)</option>
-                <option value="Shells">Shells (ሼል)</option>
-                <option value="Hours">Hours (ሰዓት)</option>
-                <option value="Meters">Meters (ሜትር)</option>
-                <option value="Tons">Tons (ቶን)</option>
-                <option value="Sets">Sets (ስብስብ)</option>
-              </select>
-            </div>
-
-            {/* 3. PLAN */}
-            <div>
-              <label className="text-xs font-semibold text-white block mb-1">
-                3. Plan (ዕቅድ) *
-              </label>
-              <input
-                type="number"
-                required
-                min={1}
-                value={planQty}
-                onChange={(e) => setPlanQty(e.target.value === '' ? '' : Number(e.target.value))}
-                placeholder="500"
-                className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 font-mono text-xs tabular-nums"
-              />
-            </div>
-
-            {/* 4. ACTUAL */}
-            <div>
-              <label className="text-xs font-semibold text-white block mb-1">
-                4. Actual (ክንውን) *
-              </label>
-              <input
-                type="number"
-                required
-                min={0}
-                value={actualQty}
-                onChange={(e) => setActualQty(e.target.value === '' ? '' : Number(e.target.value))}
-                placeholder="425"
-                className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 font-mono text-xs tabular-nums"
-              />
-            </div>
-          </div>
-
-          {/* 5. PERFORMANCE IN % (Live Computed) & 6. DEPARTMENT */}
+          {/* 2. Department & Week */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* 5. PERFORMANCE IN % */}
-            <div className="bg-slate-950/80 border border-slate-800 rounded p-3">
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="font-semibold text-white flex items-center gap-1">
-                  <Calculator className="w-3.5 h-3.5 text-blue-400" />
-                  5. Performance in % (አፈጻጸም በ%)
-                </span>
-                <span className="font-mono text-xs text-slate-400">Actual / Plan</span>
-              </div>
-
-              <div className="flex items-baseline justify-between mt-1 mb-2">
-                <span
-                  className={`text-xl font-bold font-mono tabular-nums ${
-                    performanceInPct >= 100
-                      ? 'text-emerald-400'
-                      : performanceInPct >= 75
-                      ? 'text-blue-400'
-                      : 'text-amber-400'
-                  }`}
-                >
-                  {performanceInPct}%
-                </span>
-                <span className="text-[11px] font-mono text-slate-400">
-                  {actualVal} / {planVal} {measurement}
-                </span>
-              </div>
-
-              {/* Progress bar */}
-              <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
-                <div
-                  className={`h-2 rounded-full transition-all ${
-                    performanceInPct >= 100
-                      ? 'bg-emerald-500'
-                      : performanceInPct >= 75
-                      ? 'bg-blue-500'
-                      : 'bg-amber-500'
-                  }`}
-                  style={{ width: `${Math.min(100, performanceInPct)}%` }}
-                />
-              </div>
-            </div>
-
-            {/* 6. DEPARTMENT */}
             <div>
-              <label className="text-xs font-semibold text-white block mb-1">
-                6. Department (ክፍል) *
+              <label className="text-[11px] font-semibold text-white block mb-1">
+                2. Department (ክፍል) *
               </label>
               <select
                 value={departmentId}
-                onChange={(e) => setDepartmentId(e.target.value as any)}
-                className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 text-xs"
+                onChange={(e) => setDepartmentId(e.target.value as DepartmentId)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 text-xs"
               >
-                {DEPARTMENTS.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {langMode === 'am' ? d.nameAm : `${d.nameEn} (${d.nameAm})`}
+                {DEPARTMENTS.map((dept) => (
+                  <option key={dept.id} value={dept.id}>
+                    {dept.nameEn}
                   </option>
                 ))}
               </select>
+            </div>
 
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[10px] text-slate-400 block mb-0.5">Tracking Week</label>
-                  <select
-                    value={week}
-                    onChange={(e) => setWeek(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-white text-[11px] font-mono"
-                  >
-                    <option value="W44">Week 44 (Current)</option>
-                    <option value="W45">Week 45</option>
-                    <option value="W46">Week 46</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[10px] text-slate-400 block mb-0.5">Priority Tag</label>
-                  <select
-                    value={priority}
-                    onChange={(e) => setPriority(e.target.value as any)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-white text-[11px]"
-                  >
-                    <option value="Urgent">Urgent (አስቸኳይ)</option>
-                    <option value="Critical">Critical (ወሳኝ)</option>
-                    <option value="High">High (ከፍተኛ)</option>
-                    <option value="Medium">Medium (መካከለኛ)</option>
-                    <option value="Low">Low (ዝቅተኛ)</option>
-                  </select>
-                </div>
-              </div>
+            <div>
+              <label className="text-[11px] font-semibold text-white block mb-1">
+                Evaluation Week
+              </label>
+              <input
+                type="text"
+                value={week}
+                onChange={(e) => setWeek(e.target.value)}
+                placeholder="e.g. W44"
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 text-xs font-mono"
+              />
             </div>
           </div>
 
-          {/* Auxiliary Owner and Due Date */}
-          <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800">
+          {/* 3. Measurement Unit & Planned Target Qty */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-950 rounded-lg border border-slate-800">
             <div>
-              <label className="text-[11px] text-slate-400 block mb-1">Assigned Lead / Engineer</label>
+              <label className="text-[11px] font-semibold text-white block mb-1">
+                3. Unit of Measure (መለኪያ) *
+              </label>
+              <input
+                type="text"
+                required
+                value={measurement}
+                onChange={(e) => setMeasurement(e.target.value)}
+                placeholder="Pcs, Sets, Hrs, Tons, ETB"
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 text-xs font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-blue-400 block mb-1">
+                4. Target Planned Qty (እቅድ መጠን) *
+              </label>
+              <input
+                type="number"
+                min="1"
+                step="any"
+                required
+                value={planQty}
+                onChange={(e) => setPlanQty(e.target.value === '' ? '' : Number(e.target.value))}
+                placeholder="500"
+                className="w-full bg-slate-900 border border-blue-500/60 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-400 text-xs font-mono font-bold text-base"
+              />
+            </div>
+          </div>
+
+          {/* 4. Assigned Lead, Priority */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-semibold text-white block mb-1">
+                Assigned Lead (ኃላፊ)
+              </label>
               <input
                 type="text"
                 value={assignedTo}
                 onChange={(e) => setAssignedTo(e.target.value)}
-                placeholder="e.g. Eng. Dawit Alemayehu"
-                className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-blue-500 text-xs"
+                placeholder="Supervisor name"
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 text-xs"
               />
             </div>
 
             <div>
-              <label className="text-[11px] text-slate-400 block mb-1">Due Date</label>
-              <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-blue-500 font-mono text-xs"
-              />
+              <label className="text-[11px] font-semibold text-white block mb-1">
+                Priority (ቅድሚያ)
+              </label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as TaskPriority)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 text-xs"
+              >
+                <option value="Critical">Critical (ወሳኝ)</option>
+                <option value="Urgent">Urgent (አስቸኳይ)</option>
+                <option value="High">High (ከፍተኛ)</option>
+                <option value="Medium">Medium (መካከለኛ)</option>
+                <option value="Low">Low (ዝቅተኛ)</option>
+              </select>
             </div>
           </div>
 
-          {/* Variance / Operational Note */}
-          <div>
-            <label className="text-[11px] text-slate-400 block mb-1">Variance / Remark Note</label>
-            <input
-              type="text"
-              value={varianceNotes}
-              onChange={(e) => setVarianceNotes(e.target.value)}
-              placeholder="e.g. Batch delivered on schedule with zero defect"
-              className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-blue-500 text-xs"
-            />
+          {/* Blocked By (Predecessor Task Dependency) */}
+          <div className="p-3 bg-amber-950/20 border border-amber-800/40 rounded-lg space-y-1">
+            <label className="text-[11px] font-semibold text-amber-300 flex items-center gap-1.5">
+              <Lock className="w-3.5 h-3.5 text-amber-400" />
+              <span>Blocked By / Predecessor Task (አስቀድሞ መጠናቀቅ ያለበት ስራ ጥገኝነት)</span>
+            </label>
+            <p className="text-[10px] text-slate-400">
+              {langMode === 'am' 
+                ? 'ይህ ስራ ከመጀመሩ በፊት መጠናቀቅ ያለበትን የቀደመ ስራ ይምረጡ' 
+                : 'Select the predecessor deliverable that must be completed before this task can start execution.'}
+            </p>
+            <select
+              value={blockedBy}
+              onChange={(e) => setBlockedBy(e.target.value)}
+              className="w-full bg-slate-950 border border-amber-700/60 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500 text-xs font-mono"
+            >
+              <option value="">None - Independent Task (ገለልተኛ ስራ)</option>
+              {tasks.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.id}: {t.titleEn.slice(0, 40)}... [{t.status}]
+                </option>
+              ))}
+            </select>
           </div>
 
-          {/* Footer Submit */}
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+          {/* 5. Date Range: Start Date to End Date */}
+          <div className="p-3 bg-slate-950/70 rounded-lg border border-slate-800 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-blue-300 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-blue-400" />
+                <span>Execution Timeframe (የስራ ጊዜ ወሰን: ከመጀመሪያ እስከ ማጠናቀቂያ ቀን) *</span>
+              </span>
+              <span className="text-[10px] font-mono text-slate-400">
+                {startDate && endDate ? `${Math.max(1, Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 3600 * 24)) + 1)} days duration` : ''}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-medium text-slate-300 block mb-1">
+                  Start Date (የሚጀመርበት ቀን) *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 text-xs font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-medium text-slate-300 block mb-1">
+                  End Date / Due Date (የማጠናቀቂያ ቀን) *
+                </label>
+                <input
+                  type="date"
+                  required
+                  min={startDate}
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 text-xs font-mono"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Footer Actions */}
+          <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5">
             <button
               type="button"
               onClick={onClose}
-              className="px-3.5 py-1.5 text-slate-400 hover:text-white transition-colors"
+              className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
             >
-              Cancel
+              {langMode === 'am' ? 'ይቅር (Cancel)' : 'Cancel'}
             </button>
             <button
               type="submit"
-              className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded transition-colors shadow-xs"
+              className="flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors shadow-lg shadow-blue-900/40 cursor-pointer"
             >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>{langMode === 'am' ? 'ስራውን መዝግብ' : 'Register Task'}</span>
+              <Target className="w-3.5 h-3.5" />
+              <span>{langMode === 'am' ? 'እቅዱን መዝግብ (Save Plan Target)' : 'Save Plan Target'}</span>
             </button>
           </div>
         </form>

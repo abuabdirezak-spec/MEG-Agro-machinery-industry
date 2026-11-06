@@ -19,7 +19,12 @@ import {
   Sparkles,
   Trash2,
   RotateCcw,
-  Database
+  Database,
+  FileSpreadsheet,
+  Workflow,
+  CalendarRange,
+  Flame,
+  CheckSquare
 } from 'lucide-react';
 
 import { LanguageMode, ActiveTab, WeeklyTask, TaskStatus } from '../types/dashboard.ts';
@@ -33,12 +38,15 @@ interface HeaderProps {
   langMode: LanguageMode;
   setLangMode: (mode: LanguageMode) => void;
   onOpenExport: () => void;
+  onOpenGoogleSheets?: () => void;
+  onOpenMEWorkflow?: () => void;
   tasks?: WeeklyTask[];
   onNavigateToTask?: (taskId: string, filterStatus?: TaskStatus | 'All') => void;
   onClearAllData?: () => void;
   onLoadDemoData?: () => void;
   onOpenCopilot?: () => void;
   isCleanSlate?: boolean;
+  onBulkRescheduleOverdue?: (taskIds: string[]) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -47,15 +55,19 @@ export const Header: React.FC<HeaderProps> = ({
   langMode,
   setLangMode,
   onOpenExport,
+  onOpenGoogleSheets,
+  onOpenMEWorkflow,
   tasks = [],
   onNavigateToTask,
   onClearAllData,
   onLoadDemoData,
   onOpenCopilot,
   isCleanSlate = true,
+  onBulkRescheduleOverdue,
 }) => {
   const [isAlertOpen, setIsAlertOpen] = useState(false);
-  const [alertFilter, setAlertFilter] = useState<'All' | 'Overdue' | 'Urgent'>('All');
+  const [alertFilter, setAlertFilter] = useState<'All' | 'CriticalOverdue' | 'Overdue' | 'Urgent'>('All');
+  const [rescheduleMessage, setRescheduleMessage] = useState<string | null>(null);
   const alertRef = useRef<HTMLDivElement>(null);
 
   // Close popover when clicking outside
@@ -73,24 +85,56 @@ export const Header: React.FC<HeaderProps> = ({
     };
   }, [isAlertOpen]);
 
-  // Compute Overdue & Urgent tasks
-  const overdueTasks = tasks.filter((t) => t.status === 'Overdue');
+  // Today's date string YYYY-MM-DD
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Helper to determine if an incomplete task is past its end date / due date
+  const isTaskPastEndDate = (task: WeeklyTask) => {
+    if (task.status === 'Completed') return false;
+    const taskEndDate = task.endDate || task.dueDate;
+    if (!taskEndDate) return false;
+    return todayStr > taskEndDate;
+  };
+
+  // 1. Critical Overdue tasks: Incomplete tasks strictly past their end date
+  const criticalOverdueTasks = tasks.filter(isTaskPastEndDate);
+
+  // 2. Marked Overdue tasks
+  const overdueTasks = tasks.filter((t) => t.status === 'Overdue' || isTaskPastEndDate(t));
+
+  // 3. Urgent or Critical priority incomplete tasks
   const urgentTasks = tasks.filter(
     (t) => (t.priority === 'Urgent' || t.priority === 'Critical') && t.status !== 'Completed'
   );
 
   // Combined list of critical alert tasks
   const alertTaskMap = new Map<string, WeeklyTask>();
+  criticalOverdueTasks.forEach((t) => alertTaskMap.set(t.id, t));
   overdueTasks.forEach((t) => alertTaskMap.set(t.id, t));
   urgentTasks.forEach((t) => alertTaskMap.set(t.id, t));
   const alertTasks = Array.from(alertTaskMap.values());
   const totalAlertsCount = alertTasks.length;
 
   const displayedAlerts = alertTasks.filter((t) => {
-    if (alertFilter === 'Overdue') return t.status === 'Overdue';
+    if (alertFilter === 'CriticalOverdue') return isTaskPastEndDate(t);
+    if (alertFilter === 'Overdue') return t.status === 'Overdue' || isTaskPastEndDate(t);
     if (alertFilter === 'Urgent') return (t.priority === 'Urgent' || t.priority === 'Critical') && t.status !== 'Completed';
     return true;
   });
+
+  const handleBulkReschedule = () => {
+    const idsToReschedule = criticalOverdueTasks.map((t) => t.id);
+    if (idsToReschedule.length === 0) return;
+    if (onBulkRescheduleOverdue) {
+      onBulkRescheduleOverdue(idsToReschedule);
+      setRescheduleMessage(
+        langMode === 'am'
+          ? `${idsToReschedule.length} ስራዎች ወደ ቀጣይ የስራ ሳምንት ተዘዋውረዋል!`
+          : `Successfully rescheduled ${idsToReschedule.length} Critical Overdue tasks to next working week!`
+      );
+      setTimeout(() => setRescheduleMessage(null), 4000);
+    }
+  };
 
   return (
     <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-6 py-3.5 flex items-center justify-between gap-8 transition-colors">
@@ -201,44 +245,70 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Zone 3: Primary Action & Controls */}
       <div className="flex items-center gap-2.5 shrink-0">
-        {/* Urgent & Overdue Task Alert System */}
+        {/* Critical Overdue & Alerts Highlight in Header */}
         <div className="relative" ref={alertRef}>
-          <button
-            onClick={() => setIsAlertOpen(!isAlertOpen)}
-            className={`relative flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded border transition-all cursor-pointer ${
-              isAlertOpen
-                ? 'bg-rose-950 border-rose-500 text-white ring-2 ring-rose-500/40 shadow-md'
-                : totalAlertsCount > 0
-                ? 'bg-rose-950/40 hover:bg-rose-900/60 border-rose-800/70 text-rose-200 hover:text-white'
-                : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'
-            }`}
-            title={`${totalAlertsCount} Overdue or Urgent tasks requiring executive attention`}
-            aria-label="Executive Task Alerts"
-          >
-            <div className="relative flex items-center justify-center">
-              <Bell className={`w-3.5 h-3.5 ${totalAlertsCount > 0 ? 'text-rose-400' : 'text-slate-400'}`} />
+          <div className="flex items-center gap-1.5">
+            {/* Dedicated Critical Overdue Pulse Pill */}
+            {criticalOverdueTasks.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAlertFilter('CriticalOverdue');
+                  setIsAlertOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-md bg-rose-600 hover:bg-rose-500 text-white border border-rose-400/80 shadow-md animate-pulse transition-all cursor-pointer"
+                title={`${criticalOverdueTasks.length} tasks remain incomplete past their end date! Click to review & bulk-reschedule.`}
+              >
+                <Flame className="w-3.5 h-3.5 text-white" />
+                <span className="font-mono text-[11px] uppercase tracking-wide">
+                  {langMode === 'am' ? 'ጊዜ ያለፈባቸው ወሳኝ ስራዎች' : 'Critical Overdue'}
+                </span>
+                <span className="px-1.5 py-0.2 rounded-full bg-black/40 text-[10px] font-mono">
+                  {criticalOverdueTasks.length}
+                </span>
+              </button>
+            )}
+
+            {/* Standard Alerts Button */}
+            <button
+              onClick={() => setIsAlertOpen(!isAlertOpen)}
+              className={`relative flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded border transition-all cursor-pointer ${
+                isAlertOpen
+                  ? 'bg-rose-950 border-rose-500 text-white ring-2 ring-rose-500/40 shadow-md'
+                  : criticalOverdueTasks.length > 0
+                  ? 'bg-rose-950/80 hover:bg-rose-900 border-rose-700 text-rose-200 hover:text-white'
+                  : totalAlertsCount > 0
+                  ? 'bg-rose-950/40 hover:bg-rose-900/60 border-rose-800/70 text-rose-200 hover:text-white'
+                  : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'
+              }`}
+              title={`${totalAlertsCount} Overdue or Urgent tasks requiring executive attention`}
+              aria-label="Executive Task Alerts"
+            >
+              <div className="relative flex items-center justify-center">
+                <Bell className={`w-3.5 h-3.5 ${totalAlertsCount > 0 ? 'text-rose-400' : 'text-slate-400'}`} />
+                {totalAlertsCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                  </span>
+                )}
+              </div>
+
+              <span className="hidden sm:inline">
+                {langMode === 'am' ? 'ማስጠንቀቂያ' : 'Alerts'}
+              </span>
+
               {totalAlertsCount > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                <span className="px-1.5 py-0.2 text-[10px] font-mono font-bold bg-rose-600 text-white rounded-full">
+                  {totalAlertsCount}
                 </span>
               )}
-            </div>
-
-            <span className="hidden sm:inline">
-              {langMode === 'am' ? 'ማስጠንቀቂያ' : 'Alerts'}
-            </span>
-
-            {totalAlertsCount > 0 && (
-              <span className="px-1.5 py-0.2 text-[10px] font-mono font-bold bg-rose-600 text-white rounded-full">
-                {totalAlertsCount}
-              </span>
-            )}
-          </button>
+            </button>
+          </div>
 
           {/* Executive Alert Popover Dropdown */}
           {isAlertOpen && (
-            <div className="absolute right-0 mt-2 w-80 sm:w-[420px] bg-slate-900 border border-slate-700 rounded-lg shadow-2xl z-50 overflow-hidden text-xs">
+            <div className="absolute right-0 mt-2 w-80 sm:w-[460px] bg-slate-900 border border-slate-700 rounded-lg shadow-2xl z-50 overflow-hidden text-xs">
               {/* Popover Header */}
               <div className="px-4 py-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -250,7 +320,7 @@ export const Header: React.FC<HeaderProps> = ({
                       {langMode === 'am' ? 'የአመራር አስቸኳይ ማስጠንቀቂያዎች' : 'Executive Deadline & Priority Alerts'}
                     </h4>
                     <p className="text-[10px] text-slate-400">
-                      <span className="text-rose-400 font-semibold">{overdueTasks.length} {langMode === 'am' ? 'ጊዜ ያለፈባቸው' : 'Overdue'}</span>
+                      <span className="text-rose-400 font-semibold">{criticalOverdueTasks.length} {langMode === 'am' ? 'ወሳኝ ጊዜ ያለፈባቸው' : 'Critical Overdue'}</span>
                       {' · '}
                       <span className="text-amber-400 font-semibold">{urgentTasks.length} {langMode === 'am' ? 'አስቸኳይ' : 'Urgent'}</span>
                     </p>
@@ -265,11 +335,43 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
               </div>
 
+              {/* Bulk Reschedule Action Notification Bar */}
+              {criticalOverdueTasks.length > 0 && (
+                <div className="bg-rose-950/80 border-b border-rose-800/80 px-3.5 py-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-[11px] text-rose-200">
+                    <Flame className="w-3.5 h-3.5 text-rose-400 shrink-0 animate-bounce" />
+                    <span>
+                      <strong>{criticalOverdueTasks.length}</strong> {langMode === 'am' ? 'ስራዎች ከማጠናቀቂያ ጊዜያቸው አልፈዋል' : 'tasks incomplete past end date'}
+                    </span>
+                  </div>
+
+                  {onBulkRescheduleOverdue && (
+                    <button
+                      type="button"
+                      onClick={handleBulkReschedule}
+                      className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded font-bold text-[10px] uppercase font-mono tracking-wide flex items-center gap-1 transition-colors cursor-pointer shadow-sm"
+                      title="Bulk-reschedule all Critical Overdue deliverables to next working week"
+                    >
+                      <CalendarRange className="w-3 h-3" />
+                      <span>{langMode === 'am' ? 'ወደ ቀጣይ ሳምንት አዛውር' : 'Reschedule to Next Week'}</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Notification toast if rescheduled */}
+              {rescheduleMessage && (
+                <div className="bg-emerald-950 border-b border-emerald-800 px-3 py-1.5 text-[11px] text-emerald-300 font-semibold flex items-center gap-1.5">
+                  <CheckSquare className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>{rescheduleMessage}</span>
+                </div>
+              )}
+
               {/* Filter Tabs */}
-              <div className="flex items-center gap-1.5 px-3 py-2 bg-slate-900/90 border-b border-slate-800 text-[11px]">
+              <div className="flex items-center gap-1.5 px-3 py-2 bg-slate-900/90 border-b border-slate-800 text-[11px] overflow-x-auto">
                 <button
                   onClick={() => setAlertFilter('All')}
-                  className={`px-2.5 py-1 rounded font-medium transition-colors ${
+                  className={`px-2.5 py-1 rounded font-medium transition-colors whitespace-nowrap ${
                     alertFilter === 'All'
                       ? 'bg-slate-800 text-white font-semibold'
                       : 'text-slate-400 hover:text-slate-200'
@@ -278,19 +380,30 @@ export const Header: React.FC<HeaderProps> = ({
                   {langMode === 'am' ? 'ሁሉም' : 'All'} ({totalAlertsCount})
                 </button>
                 <button
+                  onClick={() => setAlertFilter('CriticalOverdue')}
+                  className={`px-2.5 py-1 rounded font-medium transition-colors flex items-center gap-1 whitespace-nowrap ${
+                    alertFilter === 'CriticalOverdue'
+                      ? 'bg-rose-600 text-white font-bold shadow-xs'
+                      : 'text-rose-400 hover:bg-rose-950/40'
+                  }`}
+                >
+                  <Flame className="w-3 h-3" />
+                  {langMode === 'am' ? 'ወሳኝ ጊዜ ያለፈባቸው' : 'Critical Overdue'} ({criticalOverdueTasks.length})
+                </button>
+                <button
                   onClick={() => setAlertFilter('Overdue')}
-                  className={`px-2.5 py-1 rounded font-medium transition-colors flex items-center gap-1 ${
+                  className={`px-2.5 py-1 rounded font-medium transition-colors flex items-center gap-1 whitespace-nowrap ${
                     alertFilter === 'Overdue'
                       ? 'bg-rose-950 text-rose-300 font-semibold border border-rose-800/60'
                       : 'text-slate-400 hover:text-rose-300'
                   }`}
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                  {langMode === 'am' ? 'ጊዜ ያለፈባቸው' : 'Overdue'} ({overdueTasks.length})
+                  {langMode === 'am' ? 'ያለፈባቸው' : 'Overdue'} ({overdueTasks.length})
                 </button>
                 <button
                   onClick={() => setAlertFilter('Urgent')}
-                  className={`px-2.5 py-1 rounded font-medium transition-colors flex items-center gap-1 ${
+                  className={`px-2.5 py-1 rounded font-medium transition-colors flex items-center gap-1 whitespace-nowrap ${
                     alertFilter === 'Urgent'
                       ? 'bg-amber-950 text-amber-300 font-semibold border border-amber-800/60'
                       : 'text-slate-400 hover:text-amber-300'
@@ -332,6 +445,12 @@ export const Header: React.FC<HeaderProps> = ({
                           </div>
 
                           <div className="flex items-center gap-1 shrink-0">
+                            {isTaskPastEndDate(task) && (
+                              <span className="px-1.5 py-0.2 text-[9px] font-mono font-bold uppercase rounded bg-rose-600 text-white animate-pulse flex items-center gap-0.5 shadow-xs">
+                                <Flame className="w-2.5 h-2.5" />
+                                <span>Critical Overdue</span>
+                              </span>
+                            )}
                             {isUrgent && (
                               <span className="px-1.5 py-0.2 text-[9px] font-mono font-bold uppercase rounded bg-rose-950 text-rose-300 border border-rose-800/70">
                                 {task.priority}
@@ -382,26 +501,45 @@ export const Header: React.FC<HeaderProps> = ({
                         </div>
 
                         {/* Due Date & Action */}
-                        <div className="mt-2 flex items-center justify-between gap-2 pt-1.5 border-t border-slate-800/60">
+                        <div className="mt-2 flex items-center justify-between gap-2 pt-1.5 border-t border-slate-800/60 flex-wrap">
                           <div className="flex items-center gap-1 text-[10px] text-rose-300 font-mono">
                             <Clock className="w-3 h-3 text-rose-400 shrink-0" />
-                            <span>{langMode === 'am' ? 'ማጠናቀቂያ' : 'Due'}: {task.dueDate}</span>
+                            <span>{langMode === 'am' ? 'ማጠናቀቂያ' : 'Due'}: {task.endDate || task.dueDate}</span>
+                            {isTaskPastEndDate(task) && (
+                              <span className="text-rose-400 font-bold ml-1">
+                                (Past End Date)
+                              </span>
+                            )}
                           </div>
 
-                          <button
-                            onClick={() => {
-                              setIsAlertOpen(false);
-                              if (onNavigateToTask) {
-                                onNavigateToTask(task.id, task.status);
-                              } else {
-                                setActiveTab('tasks');
-                              }
-                            }}
-                            className="flex items-center gap-1 text-[11px] font-bold text-blue-400 hover:text-blue-300 transition-colors"
-                          >
-                            <span>{langMode === 'am' ? 'ስራውን ክፈት' : 'Inspect Task'}</span>
-                            <ChevronRight className="w-3 h-3" />
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            {isTaskPastEndDate(task) && onBulkRescheduleOverdue && (
+                              <button
+                                type="button"
+                                onClick={() => onBulkRescheduleOverdue([task.id])}
+                                className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950/90 hover:bg-rose-900 text-rose-300 border border-rose-700/80 flex items-center gap-1 transition-colors cursor-pointer"
+                                title="Reschedule deliverable to next working week"
+                              >
+                                <CalendarRange className="w-2.5 h-2.5 text-rose-400" />
+                                <span>{langMode === 'am' ? 'ሳምንት አዛውር' : 'Reschedule'}</span>
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => {
+                                setIsAlertOpen(false);
+                                if (onNavigateToTask) {
+                                  onNavigateToTask(task.id, task.status);
+                                } else {
+                                  setActiveTab('tasks');
+                                }
+                              }}
+                              className="flex items-center gap-1 text-[11px] font-bold text-blue-400 hover:text-blue-300 transition-colors"
+                            >
+                              <span>{langMode === 'am' ? 'ስራውን ክፈት' : 'Inspect Task'}</span>
+                              <ChevronRight className="w-3 h-3" />
+                            </button>
+                          </div>
                         </div>
 
                         {task.varianceNotes && (
@@ -503,6 +641,32 @@ export const Header: React.FC<HeaderProps> = ({
             አማ
           </button>
         </div>
+
+        {/* Google Sheets Sync & Live Export */}
+        {onOpenGoogleSheets && (
+          <button
+            type="button"
+            onClick={onOpenGoogleSheets}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-200 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-600/60 rounded transition-all whitespace-nowrap cursor-pointer shadow-sm shadow-emerald-950/40"
+            title="Google Sheets: Live multi-sheet sync to your Google Drive spreadsheet"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden sm:inline">{langMode === 'am' ? 'Google Sheets' : 'Google Sheets'}</span>
+          </button>
+        )}
+
+        {/* M&E Workflow Framework: Plan -> Execution -> Performance */}
+        {onOpenMEWorkflow && (
+          <button
+            type="button"
+            onClick={onOpenMEWorkflow}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-200 bg-blue-950/80 hover:bg-blue-900 border border-blue-600/60 rounded transition-all whitespace-nowrap cursor-pointer shadow-sm shadow-blue-950/40"
+            title="Monitoring & Evaluation: Plan (እቅድ) -> Execution (ክንውን) -> Performance Rate (አፈፃፀም) Workflow"
+          >
+            <Workflow className="w-3.5 h-3.5 text-blue-400" />
+            <span className="hidden md:inline">{langMode === 'am' ? 'ክትትልና ግምገማ (M&E)' : 'M&E Workflow'}</span>
+          </button>
+        )}
 
         {/* Executive Reporting System (Word, Excel, PowerPoint) */}
         <button
